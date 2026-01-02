@@ -20,7 +20,6 @@
   <script src="https://unpkg.com/three@0.152.2/build/three.min.js"></script>
 
   <style>
-    /* Basic visual adjustments on top of Primer to make it feel GitHub-like */
     :root { --accent: #238636; --muted: #8b949e; }
     body { background-color: #0d1117; color: #c9d1d9; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }
     header.Header { background-color:#161b22; border-bottom:1px solid #30363d; }
@@ -33,31 +32,23 @@
     .Box-row:first-child { border-top:0; }
     .Box-title { color:#c9d1d9; padding:12px; font-size:1.05rem; }
     .Label { font-size:12px; padding:4px 8px; border-radius:6px; }
-    .Label--orange { background:#6f4a2e; color:#fff; }
-    .Label--blue { background:#0366d6; color:#fff; }
-    .Label--green { background:#2da44e; color:#fff; }
     .btn-primary { background:var(--accent); border-color:var(--accent); color:#fff; }
     footer.footer { color:var(--muted); border-top:1px solid #30363d; padding:24px 0; }
-    /* layout */
     .container-lg { max-width:1200px; margin:0 auto; padding:20px; }
     .two-col { display:grid; grid-template-columns: 1fr 360px; gap:20px; }
     @media (max-width:1000px){ .two-col { grid-template-columns: 1fr; } .panel-right { position:static; } }
-    /* map */
     #map { height:520px; border-radius:8px; border:1px solid #30363d; }
-    /* repo list */
     .repo-title { font-weight:700; color:#58a6ff; }
     .muted { color:var(--muted); }
-    /* timeline */
     #timeline { margin-top:12px; }
-    /* modal overlay */
     .overlay { position:fixed; left:0; top:0; right:0; bottom:0; background: rgba(2,6,23,0.85); display:flex; align-items:center; justify-content:center; z-index:12000; }
     .card-dark { background:#0d1117; border:1px solid #30363d; color:#c9d1d9; border-radius:10px; padding:16px; }
-    /* small responsive tweaks */
     .small { font-size:13px; }
     .btn-ghost { background: transparent; border: 1px solid rgba(255,255,255,0.04); color: #c9d1d9; }
-    /* tabs */
     .tabs .tab { cursor:pointer; border-radius:6px; margin-right:6px; }
     .tabs .tab.selected { background: rgba(88,166,255,0.08); }
+    .contrib-list { display:grid; gap:8px; }
+    .muted-link { color: var(--muted); text-decoration:none; }
   </style>
 </head>
 <body>
@@ -82,7 +73,7 @@
     <button id="new-finding-btn" class="btn btn-primary btn-sm">+ New finding</button>
 
     <details class="details-reset details-overlay" style="margin-left:8px;">
-      <summary class="Header-link" aria-haspopup="menu" role="button">
+      <summary id="avatar-summary" class="Header-link" aria-haspopup="menu" role="button">
         <img id="avatar-img" class="avatar avatar-user" src="https://avatars.githubusercontent.com/u/0?v=4" width="32" height="32" alt="@guest">
       </summary>
       <div class="dropdown-menu dropdown-menu-sw mt-2" style="width:260px;">
@@ -94,13 +85,11 @@
   </div>
 </header>
 
-<!-- Main container -->
 <div class="container-lg">
-  <!-- top banner / filters -->
   <div class="d-flex flex-justify-between mb-4">
     <div>
       <h1 class="f1 text-normal">ArcheoHub — Git for Archaeology</h1>
-      <p class="muted small">Explore sites, commits, stratigraphy diffs, issues and pull requests. This is a prototype — data is local & simulated.</p>
+      <p class="muted small">Explore sites, commits, stratigraphy diffs, issues and pull requests. Prototype — data is local & simulated.</p>
     </div>
     <div class="d-none d-md-flex flex-items-center gap-2">
       <select id="filter-type" class="form-select form-select-sm">
@@ -115,11 +104,10 @@
     </div>
   </div>
 
-  <!-- SPA render target -->
   <div id="app-root"></div>
 </div>
 
-<!-- New Finding Modal (hidden) -->
+<!-- Modals -->
 <div id="new-finding-modal" class="overlay" hidden>
   <div class="card-dark" style="width:720px; max-width:95%;">
     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -146,7 +134,6 @@
   </div>
 </div>
 
-<!-- Login / Signup Modal -->
 <div id="auth-modal" class="overlay" hidden>
   <div class="card-dark" style="width:420px; max-width:95%;">
     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -164,10 +151,26 @@
   </div>
 </div>
 
-<!-- Simple toast -->
+<div id="edit-profile-modal" class="overlay" hidden>
+  <div class="card-dark" style="width:520px; max-width:95%;">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h3 style="margin:0">Edit Profile</h3>
+      <button id="edit-profile-close" class="btn btn-ghost btn-sm">Close</button>
+    </div>
+    <div>
+      <div class="mb-2 small muted">Update your display name, bio and website (local only).</div>
+      <input id="edit-displayName" class="form-control form-control-sm mb-2" placeholder="Display name" />
+      <input id="edit-website" class="form-control form-control-sm mb-2" placeholder="Website (https://...)" />
+      <textarea id="edit-bio" class="form-control form-control-sm mb-2" rows="4" placeholder="Short bio"></textarea>
+      <div class="d-flex justify-content-end gap-2">
+        <button id="edit-profile-save" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="toast" style="position:fixed; right:18px; bottom:18px; z-index:14000;"></div>
 
-<!-- Footer -->
 <footer class="footer mt-5">
   <div class="container-lg text-center">
     <p class="mb-0">© 2026 ArcheoHub — Prototype. Contact: <a href="mailto:shyn.aityk@gmail.com">shyn.aityk@gmail.com</a></p>
@@ -176,21 +179,20 @@
 
 <script>
 /* ----------------------------------------------------------------------------
-   Single-file SPA: improvements and defensive guards
-   - Defensive event attachment (safeOn)
-   - Guards for CDN globals (noUiSlider, L, THREE)
-   - Single canonical escapeHTML that works in older environments
-   - Avoid optional chaining to prevent syntax errors in older build targets
+   Single-file SPA: profile, edit, export CSV, commit links to Diff/3D
+   - Seed owners default to "community" for seeded repos
+   - New repos created by users record owner = App.user.displayName
+   - Profile lists commits with Diff + 3D links
+   - Edit profile modal (displayName, bio, website)
+   - Export contributions CSV (includes layers JSON for commits)
    ---------------------------------------------------------------------------- */
 
-///// Small helpers /////
+//// Helpers ////
 function uid(prefix='id'){ return prefix + '-' + Math.random().toString(36).slice(2,9); }
 function now(){ return new Date().toISOString(); }
 function saveLS(key,value){ try { localStorage.setItem(key, JSON.stringify(value)); } catch(e){ console.warn('saveLS error', e); } }
 function loadLS(key, fallback){ try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }catch(e){ return fallback; } }
 function toast(msg, ms=2500){ const t=document.createElement('div'); t.className='Box p-2 mb-2'; t.style.background='#0b1220'; t.textContent=msg; document.getElementById('toast').appendChild(t); setTimeout(()=> t.remove(), ms); }
-
-/* Attach event if element exists; accepts element or selector */
 function safeOn(target, event, handler){
   if(!target) return;
   let el = null;
@@ -198,31 +200,22 @@ function safeOn(target, event, handler){
   else el = target;
   if(el && typeof el.addEventListener === 'function') el.addEventListener(event, handler);
 }
+function escapeHTML(s){ if (s === null || s === undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-/* Simple query helper returning first element or null */
-function $(sel){ return document.querySelector(sel); }
-
-/* Basic HTML escape (no replaceAll to support older engines) */
-function escapeHTML(s){
-  if (s === null || s === undefined) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-///// Application State /////
+//// App state ////
 const App = {
   theme: localStorage.getItem('theme') || 'dark',
-  user: loadLS('archeo_user', null),    // { email, displayName }
-  repos: loadLS('archeo_repos', null),  // seeded if null
+  user: loadLS('archeo_user', null),
+  repos: loadLS('archeo_repos', null),
   issues: loadLS('archeo_issues', null),
   prs: loadLS('archeo_prs', null),
-  page: 'explore',                      // current route
+  page: 'explore',
   currentRepoId: null,
   filter: { type: '', search: '', yearRange: [-3000, 2020] }
 };
-
 document.documentElement.setAttribute('data-color-mode', App.theme);
 
-///// Data seeding (only once) /////
+//// Data seeding (default owner: "community") ////
 if(!App.repos){
   App.repos = [];
   const BASE = [
@@ -237,12 +230,9 @@ if(!App.repos){
     ["Tikal","Guatemala",17.2220,-89.6237],
     ["Derinkuyu","Turkey",38.3745,34.7364]
   ];
-
   const COMMIT_TYPES = ["Discovery","Analysis","Theory","Preservation","Maintenance"];
   const authors = ["Dr. A. Silva","Prof. M. Chen","L. Ortega","S. Ibrahim","Y. Petrov","N. Okeke","E. Rossi","H. Nakamura"];
   const commitMsgs = ["Trench logged","Portable XRF sample","Radiocarbon sent to lab","Soil profile documented","Consolidation treatment","Geophysical survey added","Artifact cataloged","Initial survey notes"];
-
-  // generate ~200 repos distributed across base sites
   let rid = 1;
   BASE.forEach((b) => {
     for(let i=0;i<20;i++){
@@ -270,13 +260,12 @@ if(!App.repos){
         commits,
         branches: [],
         stars: Math.floor(Math.random()*5000),
-        forks: Math.floor(Math.random()*600)
+        forks: Math.floor(Math.random()*600),
+        owner: 'community'
       });
       rid++;
     }
   });
-
-  // extras
   const extras = [
     ["Lascaux","France",45.053,1.167],
     ["Pavlopetri","Greece",36.7,22.45]
@@ -286,13 +275,11 @@ if(!App.repos){
     for(let c=0;c<8;c++){
       commits.push({ id: uid('ex'), author: "A. Researcher", year: Math.floor(-3000 + Math.random()*5000), type: "Discovery", message: "Sample commit", layers:[{ id: uid('l'), name:"Topsoil", thickness:20, color:'#7fa7d9', notes:'' }] });
     }
-    App.repos.push({ id: String(rid++), name:b[0], site:b[0], country:b[1]||'Unknown', lat:b[2], lon:b[3], image:'https://images.unsplash.com/photo-1526772662000-3f88f10405ff?q=80&w=1400', commits, branches:[], stars: Math.floor(Math.random()*3000), forks: Math.floor(Math.random()*200) });
+    App.repos.push({ id: String(rid++), name:b[0], site:b[0], country:b[1]||'Unknown', lat:b[2], lon:b[3], image:'https://images.unsplash.com/photo-1526772662000-3f88f10405ff?q=80&w=1400', commits, branches:[], stars: Math.floor(Math.random()*3000), forks: Math.floor(Math.random()*200), owner: 'community' });
   });
-
   saveLS('archeo_repos', App.repos);
 }
 
-/* Issues & PRs basic seed */
 if(!App.issues){
   App.issues = [
     { id: uid('iss'), title: "Artifact numbering mismatch", repoId: App.repos[0].id, status: "todo", author: "Dr. A. Silva", created: now(), comments: [] },
@@ -307,17 +294,11 @@ if(!App.prs){
   saveLS('archeo_prs', App.prs);
 }
 
-/* ----------------------------------------------------------------------------
-   Routing & Navigation
-   ---------------------------------------------------------------------------- */
+/* Routing */
 function navigate(page, opts={}){
   App.page = page;
   if(opts.repoId) App.currentRepoId = opts.repoId;
-  try {
-    history.pushState({page, opts}, '', `#${page}${opts.repoId?'-'+opts.repoId:''}`);
-  } catch(e){
-    // some environments (file://) might throw for pushState; ignore
-  }
+  try { history.pushState({page, opts}, '', `#${page}${opts.repoId?'-'+opts.repoId:''}`); } catch(e){}
   render();
 }
 window.addEventListener('popstate', ()=> {
@@ -330,9 +311,7 @@ window.addEventListener('popstate', ()=> {
   render();
 });
 
-/* ----------------------------------------------------------------------------
-   Auth: Gmail-only demo (localStorage)
-   ---------------------------------------------------------------------------- */
+/* Auth and header */
 function setUser(user){
   App.user = user;
   saveLS('archeo_user', user);
@@ -357,12 +336,34 @@ function updateHeaderAuth(){
   }
 }
 
-/* Auth modal wiring - safe attaches */
+/* delete helpers */
+function deleteIssue(issueId){
+  const idx = App.issues.findIndex(i => i.id === issueId);
+  if(idx === -1) return false;
+  if(!confirm('Delete this issue? This cannot be undone.')) return false;
+  App.issues.splice(idx, 1);
+  saveLS('archeo_issues', App.issues);
+  toast('Issue deleted');
+  render();
+  return true;
+}
+function deletePR(prId){
+  const idx = App.prs.findIndex(p => p.id === prId);
+  if(idx === -1) return false;
+  if(!confirm('Delete this pull request? This cannot be undone.')) return false;
+  App.prs.splice(idx, 1);
+  saveLS('archeo_prs', App.prs);
+  toast('Pull request deleted');
+  render();
+  return true;
+}
+
+/* Auth modal wiring */
 safeOn('#auth-submit', 'click', ()=>{
   const email = (document.getElementById('auth-email') || {}).value || '';
   const name = (document.getElementById('auth-name') || {}).value || '';
   if(!email || !email.endsWith('@gmail.com')) { alert('Please provide a valid @gmail.com address (demo).'); return; }
-  const user = { email, displayName: name || email.split('@')[0] };
+  const user = Object.assign({ bio:'', website:'' }, { email, displayName: name || email.split('@')[0] });
   setUser(user);
   const authModal = document.getElementById('auth-modal');
   if(authModal) authModal.hidden = true;
@@ -371,28 +372,33 @@ safeOn('#auth-submit', 'click', ()=>{
 safeOn('#auth-close', 'click', ()=> { const m = document.getElementById('auth-modal'); if(m) m.hidden = true; });
 safeOn('#logout-btn', 'click', ()=> signOut());
 
-/* If avatar is clicked while not signed-in, open auth modal */
+/* Avatar: signed-in -> profile, not signed-in -> auth modal */
 document.querySelectorAll('details > summary').forEach(s=>{
   s.addEventListener('click', (e)=>{
-    if(!App.user && e.currentTarget.parentElement.classList.contains('details-overlay')){
+    const details = e.currentTarget.parentElement;
+    if(!App.user && details.classList.contains('details-overlay')){
       e.preventDefault();
       const m = document.getElementById('auth-modal'); if(m) m.hidden = false;
+    } else {
+      e.preventDefault();
+      if(details) details.removeAttribute('open');
+      navigate('profile');
     }
   });
 });
 
-/* Theme toggle */
+/* Theme toggle & new finding */
 safeOn('#theme-toggle', 'click', ()=>{
   App.theme = App.theme === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-color-mode', App.theme);
   localStorage.setItem('theme', App.theme);
 });
-
-/* New finding modal wiring */
 safeOn('#new-finding-btn','click', ()=> {
   const m = document.getElementById('new-finding-modal'); if(m) m.hidden = false;
 });
 safeOn('#close-new-finding','click', ()=> { const m = document.getElementById('new-finding-modal'); if(m) m.hidden = true; });
+
+/* New finding: record owner = App.user.displayName if signed-in, else 'guest' */
 safeOn('#submit-finding','click', ()=>{
   const form = document.getElementById('new-finding-form');
   if(!form) return;
@@ -413,7 +419,8 @@ safeOn('#submit-finding','click', ()=>{
       commits: [],
       branches: [],
       stars: 0,
-      forks: 0
+      forks: 0,
+      owner: App.user ? App.user.displayName : 'guest'
     };
     App.repos.unshift(repo);
   }
@@ -422,12 +429,14 @@ safeOn('#submit-finding','click', ()=>{
   saveLS('archeo_repos', App.repos);
   const m = document.getElementById('new-finding-modal'); if(m) m.hidden = true;
   toast('Finding submitted');
-  render(); // re-render current page
+  render();
 });
 
 /* ----------------------------------------------------------------------------
-   Rendering helpers: small components
+   Renderers (Explore / Map / Repo / Issues / PRs)
+   - These functions are similar to the previous version; unchanged behavior.
    ---------------------------------------------------------------------------- */
+
 function repoCardHTML(repo){
   const latest = repo.commits[repo.commits.length-1];
   return `
@@ -448,17 +457,12 @@ function repoCardHTML(repo){
   `;
 }
 
-/* ----------------------------------------------------------------------------
-   Renderers for specific pages
-   ---------------------------------------------------------------------------- */
-
 function render(){
   updateHeaderAuth();
   const root = document.getElementById('app-root');
   if(!root) return;
-  root.innerHTML = ''; // clear
+  root.innerHTML = '';
 
-  // global search send to explore
   const globalSearch = document.getElementById('global-search');
   if(globalSearch){
     globalSearch.onkeypress = (e)=>{
@@ -476,12 +480,10 @@ function render(){
   if(App.page === 'issues') return renderIssuesBoard(root);
   if(App.page === 'prs') return renderPRList(root);
 
-  renderExplore(root); // default
+  renderExplore(root);
 }
 
-/* -------------------------
-   Explore page
-   ------------------------- */
+/* Explore (unchanged except safety) */
 function renderExplore(root){
   root.innerHTML = `
     <div class="two-col">
@@ -533,8 +535,6 @@ function renderExplore(root){
       </aside>
     </div>
   `;
-
-  // populate repo list with filters
   const listEl = document.getElementById('repo-list');
   function filterRepos(){
     const [from,to] = App.filter.yearRange;
@@ -554,7 +554,6 @@ function renderExplore(root){
   function renderList(){
     const repos = filterRepos();
     listEl.innerHTML = repos.map(r => repoCardHTML(r)).join('');
-    // attach action handlers
     listEl.querySelectorAll('[data-action="open"]').forEach(btn=>{
       btn.addEventListener('click', (e)=> {
         const id = e.currentTarget.dataset.id;
@@ -573,7 +572,6 @@ function renderExplore(root){
     });
   }
 
-  // timeline init (guarded)
   const timelineEl = document.getElementById('timeline');
   timelineEl.innerHTML = '<div id="time-slider"></div>';
   const timeSliderElement = document.getElementById('time-slider');
@@ -596,12 +594,10 @@ function renderExplore(root){
       timeSliderElement.noUiSlider.set(App.filter.yearRange);
     }
   } else {
-    // fallback: show static range input if noUiSlider not available
     console.warn('noUiSlider not available — timeline disabled');
     timelineEl.insertAdjacentHTML('beforeend', '<div class="muted small">Timeline requires noUiSlider (disabled).</div>');
   }
 
-  // filters panel wiring
   const typeSelect = document.getElementById('explore-filter-type');
   const searchInput = document.getElementById('explore-search');
   if(typeSelect) typeSelect.value = App.filter.type;
@@ -618,9 +614,7 @@ function renderExplore(root){
   renderList();
 }
 
-/* -------------------------
-   Map page
-   ------------------------- */
+/* Map */
 function renderMap(root){
   root.innerHTML = `
     <div class="Box p-3">
@@ -631,26 +625,20 @@ function renderMap(root){
       <div id="map" class="mt-3"></div>
     </div>
   `;
-
   const mapEl = document.getElementById('map');
-  if(!mapEl){
-    console.warn('Map element not found');
-    return;
-  }
-  // guard Leaflet
+  if(!mapEl) return;
   if(typeof L === 'undefined'){
     mapEl.innerHTML = '<div class="muted small">Leaflet not loaded — map unavailable.</div>';
-    console.warn('Leaflet (L) is not available');
+    console.warn('Leaflet not available');
     return;
   }
-
-  mapEl.innerHTML = ''; // clear
+  mapEl.innerHTML = '';
   const map = L.map(mapEl).setView([20, 0], 2);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
 
   App.repos.forEach(repo=>{
     if(typeof repo.lat !== 'number' || typeof repo.lon !== 'number') return;
-    if(repo.lat === 0 && repo.lon === 0) return; // skip unknown coords
+    if(repo.lat === 0 && repo.lon === 0) return;
     const marker = L.circleMarker([repo.lat, repo.lon], { radius:6, color:'#071625', fillColor:'#58a6ff', fillOpacity:0.95 }).addTo(map);
     marker.on('click', ()=> navigate('repo', { repoId: repo.id }));
     const popup = `<div style="width:220px;"><strong>${escapeHTML(repo.name)}</strong><div class="muted small">${escapeHTML(repo.site)} • ${escapeHTML(repo.country)}</div></div>`;
@@ -658,9 +646,7 @@ function renderMap(root){
   });
 }
 
-/* -------------------------
-   Repo page (tabs: Code / Issues / PRs)
-   ------------------------- */
+/* Repo (tabs, diff/3D) */
 function renderRepo(root, repoId){
   const repo = App.repos.find(r=> r.id === String(repoId)) || App.repos[0];
   App.currentRepoId = repo.id;
@@ -708,8 +694,6 @@ function renderRepo(root, repoId){
       </aside>
     </div>
   `;
-
-  // tab wiring - safe attach
   const tabs = document.querySelectorAll('.tab');
   tabs.forEach(t=> t.addEventListener('click', (e)=>{
     tabs.forEach(x=> x.classList.remove('selected'));
@@ -717,10 +701,8 @@ function renderRepo(root, repoId){
     const tab = e.currentTarget.getAttribute('data-tab');
     loadRepoTab(tab, repo);
   }));
-  // default show code
   loadRepoTab('code', repo);
 
-  // recent commits list
   const rc = document.getElementById('recent-commits');
   if(rc) rc.innerHTML = repo.commits.slice().reverse().map(c=>`<div style="padding:8px; border-bottom:1px solid #30363d;"><div style="font-weight:700">${escapeHTML(c.message)}</div><div class="muted small">${escapeHTML(c.author)} • ${escapeHTML(c.year)} • ${escapeHTML(c.type)}</div></div>`).join('');
 
@@ -740,14 +722,13 @@ function renderRepo(root, repoId){
   safeOn('#open-3d','click', ()=> open3DViewer(repo, repo.commits[repo.commits.length-1]));
 }
 
-/* load content for repo tabs */
 function loadRepoTab(tab, repo){
   const out = document.getElementById('repo-tab-content');
   if(!out) return;
   if(tab === 'code'){
     out.innerHTML = `
-      <div><strong>Repository files</strong></div>
-      <div class="mt-2 small muted">This is a simulated file tree: commits act as snapshots.</div>
+      <div><strong>Repository files (simulated)</strong></div>
+      <div class="mt-2 small muted">Commits act as snapshots.</div>
       <div style="margin-top:12px;">
         ${repo.commits.slice().reverse().map(c=>`<div style="padding:10px; border-bottom:1px solid #30363d;"><div style="font-weight:700">${escapeHTML(c.message)}</div><div class="muted small">${escapeHTML(c.author)} • ${escapeHTML(c.year)} • <button class="btn btn-sm btn-ghost btn-diff" data-commit="${c.id}">Diff</button> <button class="btn btn-sm btn-ghost btn-3d" data-commit="${c.id}">3D</button></div></div>`).join('')}
       </div>
@@ -769,7 +750,7 @@ function loadRepoTab(tab, repo){
         <button id="new-issue" class="btn btn-primary btn-sm">New issue</button>
       </div>
       <div class="mt-2">
-        ${list.map(i=> `<div style="padding:10px; border-bottom:1px solid #30363d;"><div style="font-weight:700">${escapeHTML(i.title)}</div><div class="muted small">${escapeHTML(i.author)} • ${escapeHTML(i.status)}</div></div>`).join('')}
+        ${list.map(i=> `<div style="padding:10px; border-bottom:1px solid #30363d; display:flex; justify-content:space-between; align-items:center;"><div><div style="font-weight:700">${escapeHTML(i.title)}</div><div class="muted small">${escapeHTML(i.author)} • ${escapeHTML(i.status)}</div></div><div style="display:flex; gap:8px;"><button class="btn btn-sm btn-ghost btn-delete-issue" data-id="${i.id}">Delete</button></div></div>`).join('')}
       </div>
     `;
     safeOn('#new-issue','click', ()=> {
@@ -781,6 +762,7 @@ function loadRepoTab(tab, repo){
       loadRepoTab('issues', repo);
       toast('Issue created');
     });
+    out.querySelectorAll('.btn-delete-issue').forEach(b=> b.addEventListener('click', (e)=> deleteIssue(e.currentTarget.dataset.id)));
   } else if(tab === 'prs'){
     const prs = App.prs.filter(p=> p.repoId === repo.id);
     out.innerHTML = `
@@ -789,7 +771,7 @@ function loadRepoTab(tab, repo){
         <button id="new-pr" class="btn btn-primary btn-sm">New PR</button>
       </div>
       <div class="mt-2">
-        ${prs.map(p=> `<div style="padding:10px; border-bottom:1px solid #30363d;"><div style="font-weight:700">${escapeHTML(p.title)}</div><div class="muted small">${escapeHTML(p.author)} • ${escapeHTML(p.status)}</div><div class="mt-2"><button class="btn btn-sm btn-ghost btn-merge" data-pr="${p.id}">Merge</button></div></div>`).join('')}
+        ${prs.map(p=> `<div style="padding:10px; border-bottom:1px solid #30363d; display:flex; justify-content:space-between; align-items:center;"><div><div style="font-weight:700">${escapeHTML(p.title)}</div><div class="muted small">${escapeHTML(p.author)} • ${escapeHTML(p.status)}</div></div><div style="display:flex; gap:8px;"><button class="btn btn-sm btn-ghost btn-merge" data-pr="${p.id}">Merge</button><button class="btn btn-sm btn-ghost btn-delete-pr" data-pr="${p.id}">Delete</button></div></div>`).join('')}
       </div>
     `;
     out.querySelectorAll('.btn-merge').forEach(b=> b.addEventListener('click', (e)=>{
@@ -806,6 +788,7 @@ function loadRepoTab(tab, repo){
       loadRepoTab('prs', repo);
       toast('PR created');
     });
+    out.querySelectorAll('.btn-delete-pr').forEach(b=> b.addEventListener('click', (e)=> deletePR(e.currentTarget.dataset.pr)));
   } else if(tab === 'timeline'){
     out.innerHTML = `<div><strong>Commit timeline</strong></div><div id="repo-timeline" style="margin-top:12px;"></div><div id="repo-commit-list" class="mt-3"></div>`;
     const years = repo.commits.map(c=>c.year);
@@ -834,7 +817,6 @@ function loadRepoTab(tab, repo){
         const list = repo.commits.filter(c=> c.year >= from && c.year <= to ).slice().reverse();
         const listEl = document.getElementById('repo-commit-list');
         if(listEl) listEl.innerHTML = list.map(c=>`<div style="padding:8px; border-bottom:1px solid #30363d;"><div style="font-weight:700">${escapeHTML(c.message)}</div><div class="muted small">${escapeHTML(c.year)} • ${escapeHTML(c.type)}</div><div class="mt-1"><button class="btn btn-sm btn-ghost btn-diff" data-commit="${c.id}">Diff</button><button class="btn btn-sm btn-ghost btn-3d" data-commit="${c.id}">3D</button></div></div>`).join('');
-        // attach
         document.querySelectorAll('#repo-commit-list .btn-diff').forEach(b=> b.addEventListener('click', (e)=> openDiffChooser(repo, e.currentTarget.dataset.commit)));
         document.querySelectorAll('#repo-commit-list .btn-3d').forEach(b=> b.addEventListener('click', (e)=> { const c = repo.commits.find(x=> x.id === e.currentTarget.dataset.commit); open3DViewer(repo, c); }));
       });
@@ -845,9 +827,7 @@ function loadRepoTab(tab, repo){
   }
 }
 
-/* -------------------------
-   Issues board (kanban)
-   ------------------------- */
+/* Issues board and PR list (unchanged except delete handlers) */
 function renderIssuesBoard(root){
   const cols = ['todo','inprogress','done'];
   root.innerHTML = `
@@ -871,7 +851,7 @@ function renderIssuesBoard(root){
         card.className = 'Box-row';
         card.style.marginBottom='8px';
         card.innerHTML = `<div style="flex:1"><div style="font-weight:700">${escapeHTML(i.title)}</div><div class="muted small">${escapeHTML(i.author)}</div></div>
-          <div style="display:flex; flex-direction:column; gap:6px;"><button class="btn btn-sm btn-ghost btn-move" data-id="${i.id}" data-col="${col}">Move</button></div>`;
+          <div style="display:flex; flex-direction:column; gap:6px;"><div style="display:flex; gap:6px;"><button class="btn btn-sm btn-ghost btn-move" data-id="${i.id}" data-col="${col}">Move</button><button class="btn btn-sm btn-ghost btn-delete-issue" data-id="${i.id}">Delete</button></div></div>`;
         el.appendChild(card);
       });
     });
@@ -882,6 +862,7 @@ function renderIssuesBoard(root){
       const issue = App.issues.find(i=> i.id === id);
       if(issue){ issue.status = cols[nextIndex]; saveLS('archeo_issues', App.issues); refresh(); }
     }));
+    document.querySelectorAll('.btn-delete-issue').forEach(b=> b.addEventListener('click', (e)=> deleteIssue(e.currentTarget.dataset.id)));
   }
   safeOn('#new-board-issue','click', ()=>{
     const title = prompt('Issue title');
@@ -896,9 +877,6 @@ function renderIssuesBoard(root){
   refresh();
 }
 
-/* -------------------------
-   PR list
-   ------------------------- */
 function renderPRList(root){
   const prs = App.prs;
   root.innerHTML = `
@@ -913,8 +891,9 @@ function renderPRList(root){
   function refresh(){
     const el = document.getElementById('pr-list');
     if(!el) return;
-    el.innerHTML = prs.map(p=>`<div class="Box-row"><div style="flex:1"><div style="font-weight:700">${escapeHTML(p.title)}</div><div class="muted small">${escapeHTML(p.author)} • ${escapeHTML(p.status)}</div></div><div><button class="btn btn-sm btn-ghost btn-merge" data-id="${p.id}">Merge</button></div></div>`).join('');
+    el.innerHTML = prs.map(p=>`<div class="Box-row"><div style="flex:1"><div style="font-weight:700">${escapeHTML(p.title)}</div><div class="muted small">${escapeHTML(p.author)} • ${escapeHTML(p.status)}</div></div><div style="display:flex; gap:8px;"><button class="btn btn-sm btn-ghost btn-merge" data-id="${p.id}">Merge</button><button class="btn btn-sm btn-ghost btn-delete-pr" data-id="${p.id}">Delete</button></div></div>`).join('');
     el.querySelectorAll('.btn-merge').forEach(b=> b.addEventListener('click', (e)=> mergePR(e.currentTarget.dataset.id)));
+    el.querySelectorAll('.btn-delete-pr').forEach(b=> b.addEventListener('click', (e)=> deletePR(e.currentTarget.dataset.id)));
   }
   safeOn('#new-pr-global','click', ()=>{
     const title = prompt('PR title');
@@ -929,9 +908,7 @@ function renderPRList(root){
   refresh();
 }
 
-/* -------------------------
-   PR merge simulation
-   ------------------------- */
+/* PR merge */
 function mergePR(prId){
   const pr = App.prs.find(p=> p.id === prId);
   if(!pr) return;
@@ -948,9 +925,7 @@ function mergePR(prId){
   render();
 }
 
-/* -------------------------
-   Diff viewer: compare commits' layers
-   ------------------------- */
+/* Diff viewer and 3D viewer (guarded) */
 function openDiffChooser(repo, commitId){
   const html = `<div class="card-dark" style="width:600px; max-width:95%; padding:12px;">
     <h4>Select base & compare commits</h4>
@@ -998,21 +973,16 @@ function showDiffResults(repo, base, other){
   modal.querySelector('#open-other-3d').addEventListener('click', ()=> { modal.remove(); open3DViewer(repo, other); });
 }
 
-/* -------------------------
-   3D viewer (Three.js) - guarded
-   ------------------------- */
 function open3DViewer(repo, commit){
   if(!commit){
     alert('No commit selected');
     return;
   }
-  // guard THREE
   if(typeof THREE === 'undefined'){
     alert('3D viewer requires Three.js (not loaded)');
-    console.warn('Three.js (THREE) not available');
+    console.warn('Three.js not available');
     return;
   }
-
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
   overlay.style.alignItems = 'stretch';
@@ -1021,8 +991,6 @@ function open3DViewer(repo, commit){
   const container = document.getElementById('three-modal');
   container.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:#161b22; color:#c9d1d9;"><div><strong>${escapeHTML(repo.name)}</strong> — ${escapeHTML(commit.message)}</div><div><button id="three-close" class="btn btn-ghost btn-sm">Close</button></div></div><div id="three-canvas" style="flex:1; background:#05060a;"></div>`;
   overlay.querySelector('#three-close').addEventListener('click', ()=> overlay.remove());
-
-  // Three.js scene
   const mount = document.getElementById('three-canvas');
   const w = Math.max(640, mount.clientWidth), h = Math.max(320, mount.clientHeight);
   const scene = new THREE.Scene();
@@ -1035,7 +1003,6 @@ function open3DViewer(repo, commit){
   const hemi = new THREE.HemisphereLight(0xffffff, 0x222222, 0.9); scene.add(hemi);
   const dir = new THREE.DirectionalLight(0xffffff, 0.6); dir.position.set(100,200,100); scene.add(dir);
 
-  // build stacked layers
   const layers = commit.layers || [];
   const total = layers.reduce((s,l)=> s + (l.thickness||10), 0);
   let y = -total/2;
@@ -1051,8 +1018,6 @@ function open3DViewer(repo, commit){
     y += h;
   });
   scene.add(group);
-
-  // simple orbit controls (lightweight)
   let dragging=false, lx=0, ly=0;
   mount.addEventListener('pointerdown', (e)=> { dragging=true; lx=e.clientX; ly=e.clientY; mount.style.cursor='grabbing'; });
   window.addEventListener('pointerup', ()=> { dragging=false; mount.style.cursor='default'; });
@@ -1064,15 +1029,235 @@ function open3DViewer(repo, commit){
     group.rotation.x += dy*0.01;
   });
   mount.addEventListener('wheel', (e)=> { camera.position.z += e.deltaY*0.1; camera.position.z = Math.max(80, Math.min(1200, camera.position.z)); });
-
   function animate(){ renderer.render(scene, camera); requestAnimationFrame(animate); }
   animate();
 }
 
 /* ----------------------------------------------------------------------------
-   Small utilities & initial wiring
+   Profile: enhanced with commit Diff/3D links, edit modal, export CSV
    ---------------------------------------------------------------------------- */
 
+function renderProfile(root){
+  const user = App.user;
+  if(!user){
+    const auth = document.getElementById('auth-modal');
+    if(auth) auth.hidden = false;
+    return;
+  }
+
+  const commitsByUser = [];
+  App.repos.forEach(repo => {
+    (repo.commits || []).forEach(c => {
+      if(c.author === user.displayName || c.author === user.email) {
+        commitsByUser.push({ repo, commit: c });
+      }
+    });
+  });
+  commitsByUser.sort((a,b) => (b.commit.year || 0) - (a.commit.year || 0));
+  const issuesByUser = App.issues.filter(i => i.author === user.displayName || i.author === user.email).slice().reverse();
+  const prsByUser = App.prs.filter(p => p.author === user.displayName || p.author === user.email).slice().reverse();
+  const reposOwned = App.repos.filter(r => r.owner === user.displayName);
+
+  root.innerHTML = `
+    <div class="Box p-3">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <img src="${document.getElementById('avatar-img').src}" width="80" height="80" style="border-radius:12px;" />
+        <div style="flex:1">
+          <div style="font-weight:800; font-size:1.15rem;">${escapeHTML(user.displayName)}</div>
+          <div class="muted small">${escapeHTML(user.email)}</div>
+          <div class="muted small" style="margin-top:8px;">${escapeHTML(user.bio || '')}</div>
+          <div style="margin-top:8px;"><a class="muted-link" href="${escapeHTML(user.website || '#')}" target="_blank">${escapeHTML(user.website || '')}</a></div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-weight:700">${reposOwned.length}</div>
+          <div class="muted small">Repos added</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:12px; margin-top:12px;">
+      <button id="edit-profile-btn" class="btn btn-ghost btn-sm">Edit profile</button>
+      <button id="export-contribs" class="btn btn-ghost btn-sm">Export contributions (CSV)</button>
+    </div>
+
+    <div class="two-col" style="margin-top:16px;">
+      <div>
+        <div class="Box p-3 mb-3">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div><strong>Contributions</strong><div class="muted small">Recent activity</div></div>
+            <div class="muted small">Commits: ${commitsByUser.length}</div>
+          </div>
+          <div style="margin-top:12px;">
+            <div style="font-weight:700; margin-bottom:8px;">Recent commits by you</div>
+            <div class="contrib-list">
+              ${commitsByUser.slice(0,12).map(item => `
+                <div class="Box-row" style="display:flex; justify-content:space-between; align-items:center;">
+                  <div style="flex:1">
+                    <div style="font-weight:700">${escapeHTML(item.commit.message)}</div>
+                    <div class="muted small">${escapeHTML(item.repo.name)} • ${escapeHTML(item.commit.year)}</div>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button class="btn btn-sm btn-ghost btn-profile-diff" data-repo="${item.repo.id}" data-commit="${item.commit.id}">Diff</button>
+                    <button class="btn btn-sm btn-ghost btn-profile-3d" data-repo="${item.repo.id}" data-commit="${item.commit.id}">3D</button>
+                  </div>
+                </div>`).join('') || '<div class="muted small">No commits yet</div>'}
+            </div>
+          </div>
+        </div>
+
+        <div class="Box p-3 mb-3">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div><strong>Issues you opened</strong></div>
+            <div class="muted small">${issuesByUser.length}</div>
+          </div>
+          <div style="margin-top:12px;">
+            <div class="contrib-list">
+              ${issuesByUser.slice(0,12).map(i => `<div class="Box-row"><div><div style="font-weight:700">${escapeHTML(i.title)}</div><div class="muted small">${escapeHTML(i.repoId ? (App.repos.find(r=> r.id === i.repoId) || {name: 'unknown'}).name : 'unknown')}</div></div><div><button class="btn btn-sm btn-ghost btn-delete-issue" data-id="${i.id}">Delete</button></div></div>`).join('') || '<div class="muted small">No issues opened</div>'}
+            </div>
+          </div>
+        </div>
+
+        <div class="Box p-3">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div><strong>Pull requests you opened</strong></div>
+            <div class="muted small">${prsByUser.length}</div>
+          </div>
+          <div style="margin-top:12px;">
+            <div class="contrib-list">
+              ${prsByUser.slice(0,12).map(p => `<div class="Box-row"><div><div style="font-weight:700">${escapeHTML(p.title)}</div><div class="muted small">${escapeHTML((App.repos.find(r=> r.id === p.repoId) || {name:'unknown'}).name)}</div></div><div><button class="btn btn-sm btn-ghost btn-delete-pr" data-pr="${p.id}">Delete</button></div></div>`).join('') || '<div class="muted small">No PRs opened</div>'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="panel-right">
+        <div class="Box p-3 mb-3">
+          <div style="font-weight:700">Your repositories</div>
+          <div class="muted small mt-2">${reposOwned.length} repos added by you</div>
+          <div class="mt-3">
+            ${reposOwned.slice(0,6).map(r => `<div class="Box-row"><a href="#" data-route="repo" data-repo="${r.id}">${escapeHTML(r.name)}</a></div>`).join('') || '<div class="muted small">No repos yet</div>'}
+          </div>
+        </div>
+
+        <div class="Box p-3">
+          <div style="font-weight:700">Quick actions</div>
+          <div class="mt-2 small muted">Create or manage your contributions</div>
+          <div class="mt-2">
+            <button id="profile-new-finding" class="btn btn-ghost btn-sm">Add finding</button>
+            <button id="profile-open-issues" class="btn btn-ghost btn-sm">Open issues board</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  `;
+
+  // attach handlers
+  document.querySelectorAll('[data-route="repo"]').forEach(a=>{
+    a.addEventListener('click', (e)=> { e.preventDefault(); const id = e.currentTarget.getAttribute('data-repo'); navigate('repo', { repoId: id }); });
+  });
+  document.querySelectorAll('.btn-delete-issue').forEach(b=> b.addEventListener('click', (e)=> deleteIssue(e.currentTarget.dataset.id)));
+  document.querySelectorAll('.btn-delete-pr').forEach(b=> b.addEventListener('click', (e)=> deletePR(e.currentTarget.dataset.pr)));
+  document.querySelectorAll('.btn-profile-diff').forEach(b=> b.addEventListener('click', (e)=> {
+    const repoId = e.currentTarget.dataset.repo;
+    const commitId = e.currentTarget.dataset.commit;
+    const repo = App.repos.find(r=> r.id === repoId);
+    if(repo) openDiffChooser(repo, commitId);
+  }));
+  document.querySelectorAll('.btn-profile-3d').forEach(b=> b.addEventListener('click', (e)=> {
+    const repoId = e.currentTarget.dataset.repo;
+    const commitId = e.currentTarget.dataset.commit;
+    const repo = App.repos.find(r=> r.id === repoId);
+    const commit = repo ? repo.commits.find(c=> c.id === commitId) : null;
+    if(repo && commit) open3DViewer(repo, commit);
+  }));
+
+  safeOn('#profile-new-finding','click', ()=> { const m = document.getElementById('new-finding-modal'); if(m) m.hidden = false; });
+  safeOn('#profile-open-issues','click', ()=> navigate('issues'));
+
+  // Edit profile modal wiring
+  safeOn('#edit-profile-btn','click', ()=>{
+    const modal = document.getElementById('edit-profile-modal');
+    if(!modal) return;
+    document.getElementById('edit-displayName').value = App.user.displayName || '';
+    document.getElementById('edit-bio').value = App.user.bio || '';
+    document.getElementById('edit-website').value = App.user.website || '';
+    modal.hidden = false;
+  });
+  safeOn('#edit-profile-close','click', ()=> { const m = document.getElementById('edit-profile-modal'); if(m) m.hidden = true; });
+  safeOn('#edit-profile-save','click', ()=>{
+    const name = document.getElementById('edit-displayName').value.trim();
+    const bio = document.getElementById('edit-bio').value.trim();
+    const website = document.getElementById('edit-website').value.trim();
+    if(!name){ alert('Display name cannot be empty'); return; }
+    App.user.displayName = name;
+    App.user.bio = bio;
+    App.user.website = website;
+    saveLS('archeo_user', App.user);
+    const m = document.getElementById('edit-profile-modal'); if(m) m.hidden = true;
+    toast('Profile updated');
+    render();
+  });
+
+  // Export contributions (CSV)
+  safeOn('#export-contribs','click', ()=>{
+    exportContributionsCSV(user);
+  });
+}
+
+/* Export CSV: rows for repos, commits, issues, prs. Commits include layers JSON in a column. */
+function exportContributionsCSV(user){
+  const rows = [];
+  const pushRow = (obj) => {
+    // CSV-safe: quote fields that contain commas or quotes; wrap in double quotes and escape double quotes.
+    const cols = ['type','id','title_or_message','repo','year','author','extra'];
+    const values = cols.map(col => {
+      let v = obj[col] === undefined || obj[col] === null ? '' : String(obj[col]);
+      v = v.replace(/"/g,'""');
+      return `"${v}"`;
+    });
+    rows.push(values.join(','));
+  };
+
+  // header
+  rows.push(['"type"','"id"','"title_or_message"','"repo"','"year"','"author"','"extra"'].join(','));
+
+  // repos owned
+  App.repos.filter(r=> r.owner === user.displayName).forEach(r => {
+    pushRow({ type:'repo', id:r.id, title_or_message: r.name, repo:'', year:'', author:r.owner, extra: JSON.stringify({site:r.site,country:r.country}) });
+  });
+
+  // commits authored
+  App.repos.forEach(r=>{
+    (r.commits||[]).forEach(c=>{
+      if(c.author === user.displayName || c.author === user.email){
+        pushRow({ type:'commit', id:c.id, title_or_message: c.message, repo:r.name, year:c.year, author:c.author, extra: JSON.stringify(c.layers || []) });
+      }
+    });
+  });
+
+  // issues
+  App.issues.filter(i=> i.author === user.displayName || i.author === user.email).forEach(i=>{
+    pushRow({ type:'issue', id:i.id, title_or_message: i.title, repo:(App.repos.find(r=> r.id===i.repoId) || {}).name || '', year:i.created, author:i.author, extra: JSON.stringify(i.comments || []) });
+  });
+
+  // prs
+  App.prs.filter(p=> p.author === user.displayName || p.author === user.email).forEach(p=>{
+    pushRow({ type:'pr', id:p.id, title_or_message: p.title, repo:(App.repos.find(r=> r.id===p.repoId) || {}).name || '', year:p.created, author:p.author, extra: JSON.stringify({status:p.status, description:p.description || ''}) });
+  });
+
+  const csv = rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(user.displayName||user.email).replace(/\s+/g,'_')}_contributions.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* Initial wiring */
 function attachHeaderLinks(){
   document.querySelectorAll('[data-route]').forEach(a=>{
     a.addEventListener('click', (e)=>{
@@ -1085,8 +1270,6 @@ function attachHeaderLinks(){
     });
   });
 }
-
-/* safe initial wiring */
 safeOn('#open-explore','click', ()=> navigate('explore'));
 const mapLink = document.querySelector('.Header-link[data-route="map"]');
 if(mapLink) mapLink.addEventListener('click', (e)=> { e.preventDefault(); navigate('map'); });
@@ -1097,10 +1280,8 @@ if(prsLink) prsLink.addEventListener('click', (e)=> { e.preventDefault(); naviga
 const exploreLink = document.querySelector('.Header-link[data-route="explore"]');
 if(exploreLink) exploreLink.addEventListener('click', (e)=> { e.preventDefault(); navigate('explore'); });
 
-/* initial header auth UI */
 updateHeaderAuth();
 
-/* initial route */
 (function initRoute(){
   const h = window.location.hash.slice(1);
   if(!h) { App.page = 'explore'; }
@@ -1112,35 +1293,6 @@ updateHeaderAuth();
   render();
   attachHeaderLinks();
 })();
-
-/* helper: open profile route */
-document.querySelectorAll('[data-route="profile"]').forEach(a=>{
-  a.addEventListener('click', (e)=> { e.preventDefault(); navigate('profile'); });
-});
-
-function renderProfile(root){
-  const user = App.user;
-  if(!user){
-    const auth = document.getElementById('auth-modal');
-    if(auth) auth.hidden = false;
-    return;
-  }
-  root.innerHTML = `
-    <div class="Box p-3">
-      <div style="display:flex; align-items:center; gap:12px;">
-        <img src="${document.getElementById('avatar-img').src}" width="64" height="64" style="border-radius:8px;" />
-        <div>
-          <div style="font-weight:700">${escapeHTML(user.displayName)}</div>
-          <div class="muted small">${escapeHTML(user.email)}</div>
-        </div>
-      </div>
-    </div>
-    <div class="Box mt-3 p-3">
-      <h4>Your repositories</h4>
-      <div class="mt-2">${App.repos.slice(0,8).map(r=>`<div class="Box-row">${escapeHTML(r.name)}</div>`).join('')}</div>
-    </div>
-  `;
-}
 </script>
 </body>
 </html>
