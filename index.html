@@ -28,7 +28,7 @@
     .Header-link { color:#c9d1d9; margin-right:12px; }
     .Header-link:hover { color:#fff; }
     .form-control.input-contrast, .form-select { background:#0d1117; color:#c9d1d9; border:1px solid #30363d; }
-    .Box { background:#0d1117; border:1px solid #30363d; }
+    .Box { background:#0d1117; border:1px solid #30363d; border-radius:8px; }
     .Box-row { border-top:1px solid #30363d; padding:12px; display:flex; justify-content:space-between; align-items:center; }
     .Box-row:first-child { border-top:0; }
     .Box-title { color:#c9d1d9; padding:12px; font-size:1.05rem; }
@@ -36,7 +36,7 @@
     .Label--orange { background:#6f4a2e; color:#fff; }
     .Label--blue { background:#0366d6; color:#fff; }
     .Label--green { background:#2da44e; color:#fff; }
-    .btn-primary { background:var(--accent); border-color:var(--accent); }
+    .btn-primary { background:var(--accent); border-color:var(--accent); color:#fff; }
     footer.footer { color:var(--muted); border-top:1px solid #30363d; padding:24px 0; }
     /* layout */
     .container-lg { max-width:1200px; margin:0 auto; padding:20px; }
@@ -55,6 +55,9 @@
     /* small responsive tweaks */
     .small { font-size:13px; }
     .btn-ghost { background: transparent; border: 1px solid rgba(255,255,255,0.04); color: #c9d1d9; }
+    /* tabs */
+    .tabs .tab { cursor:pointer; border-radius:6px; margin-right:6px; }
+    .tabs .tab.selected { background: rgba(88,166,255,0.08); }
   </style>
 </head>
 <body>
@@ -173,29 +176,43 @@
 
 <script>
 /* ----------------------------------------------------------------------------
-   Single-file SPA: state, sample data, router, renderers, interactions
-   ----------------------------------------------------------------------------
-   - Auth: Gmail-only demo (localStorage)
-   - Router: history.pushState / popstate
-   - Pages: Explore, Map, Repo, Profile, Issues board, PR list
-   - Timeline slider: filters commits by year
-   - Map: Leaflet with sample markers
-   - 3D viewer: Three.js (in a modal), Diff viewer compares commit layers
+   Single-file SPA: improvements and defensive guards
+   - Defensive event attachment (safeOn)
+   - Guards for CDN globals (noUiSlider, L, THREE)
+   - Single canonical escapeHTML that works in older environments
+   - Avoid optional chaining to prevent syntax errors in older build targets
    ---------------------------------------------------------------------------- */
 
-///// Utility helpers /////
-
+///// Small helpers /////
 function uid(prefix='id'){ return prefix + '-' + Math.random().toString(36).slice(2,9); }
 function now(){ return new Date().toISOString(); }
-function saveLS(key,value){ localStorage.setItem(key, JSON.stringify(value)); }
-function loadLS(key, fallback){ try{ return JSON.parse(localStorage.getItem(key)) || fallback; }catch(e){ return fallback; } }
+function saveLS(key,value){ try { localStorage.setItem(key, JSON.stringify(value)); } catch(e){ console.warn('saveLS error', e); } }
+function loadLS(key, fallback){ try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }catch(e){ return fallback; } }
 function toast(msg, ms=2500){ const t=document.createElement('div'); t.className='Box p-2 mb-2'; t.style.background='#0b1220'; t.textContent=msg; document.getElementById('toast').appendChild(t); setTimeout(()=> t.remove(), ms); }
+
+/* Attach event if element exists; accepts element or selector */
+function safeOn(target, event, handler){
+  if(!target) return;
+  let el = null;
+  if(typeof target === 'string') el = document.querySelector(target);
+  else el = target;
+  if(el && typeof el.addEventListener === 'function') el.addEventListener(event, handler);
+}
+
+/* Simple query helper returning first element or null */
+function $(sel){ return document.querySelector(sel); }
+
+/* Basic HTML escape (no replaceAll to support older engines) */
+function escapeHTML(s){
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
 ///// Application State /////
 const App = {
   theme: localStorage.getItem('theme') || 'dark',
   user: loadLS('archeo_user', null),    // { email, displayName }
-  repos: loadLS('archeo_repos', null),  // if null, we seed
+  repos: loadLS('archeo_repos', null),  // seeded if null
   issues: loadLS('archeo_issues', null),
   prs: loadLS('archeo_prs', null),
   page: 'explore',                      // current route
@@ -205,9 +222,7 @@ const App = {
 
 document.documentElement.setAttribute('data-color-mode', App.theme);
 
-/* ------------------------
-   Data seeding (only once)
-   ------------------------ */
+///// Data seeding (only once) /////
 if(!App.repos){
   App.repos = [];
   const BASE = [
@@ -295,14 +310,17 @@ if(!App.prs){
 /* ----------------------------------------------------------------------------
    Routing & Navigation
    ---------------------------------------------------------------------------- */
-function navigate(page, opts={}) {
+function navigate(page, opts={}){
   App.page = page;
   if(opts.repoId) App.currentRepoId = opts.repoId;
-  history.pushState({page, opts}, '', `#${page}${opts.repoId?'-'+opts.repoId:''}`);
+  try {
+    history.pushState({page, opts}, '', `#${page}${opts.repoId?'-'+opts.repoId:''}`);
+  } catch(e){
+    // some environments (file://) might throw for pushState; ignore
+  }
   render();
 }
 window.addEventListener('popstate', ()=> {
-  // handle back/forward
   const h = window.location.hash.slice(1);
   if(!h) { App.page='explore'; App.currentRepoId=null; } else {
     const parts = h.split('-');
@@ -338,49 +356,51 @@ function updateHeaderAuth(){
     emailEl.textContent = 'guest';
   }
 }
-document.getElementById('auth-submit').addEventListener('click', ()=>{
-  const email = document.getElementById('auth-email').value.trim();
-  const name = document.getElementById('auth-name').value.trim();
+
+/* Auth modal wiring - safe attaches */
+safeOn('#auth-submit', 'click', ()=>{
+  const email = (document.getElementById('auth-email') || {}).value || '';
+  const name = (document.getElementById('auth-name') || {}).value || '';
   if(!email || !email.endsWith('@gmail.com')) { alert('Please provide a valid @gmail.com address (demo).'); return; }
   const user = { email, displayName: name || email.split('@')[0] };
   setUser(user);
-  document.getElementById('auth-modal').hidden = true;
+  const authModal = document.getElementById('auth-modal');
+  if(authModal) authModal.hidden = true;
   toast('Signed in as ' + user.email);
 });
-document.getElementById('auth-close').addEventListener('click', ()=> document.getElementById('auth-modal').hidden = true);
-document.getElementById('logout-btn').addEventListener('click', ()=> signOut());
+safeOn('#auth-close', 'click', ()=> { const m = document.getElementById('auth-modal'); if(m) m.hidden = true; });
+safeOn('#logout-btn', 'click', ()=> signOut());
 
-/* open auth modal when avatar clicked and not logged in */
+/* If avatar is clicked while not signed-in, open auth modal */
 document.querySelectorAll('details > summary').forEach(s=>{
   s.addEventListener('click', (e)=>{
-    // If not signed in, show modal instead of dropdown
     if(!App.user && e.currentTarget.parentElement.classList.contains('details-overlay')){
       e.preventDefault();
-      document.getElementById('auth-modal').hidden = false;
+      const m = document.getElementById('auth-modal'); if(m) m.hidden = false;
     }
   });
 });
 
 /* Theme toggle */
-document.getElementById('theme-toggle').addEventListener('click', ()=>{
+safeOn('#theme-toggle', 'click', ()=>{
   App.theme = App.theme === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-color-mode', App.theme);
   localStorage.setItem('theme', App.theme);
 });
 
-/* New finding modal */
-document.getElementById('new-finding-btn').addEventListener('click', ()=> {
-  document.getElementById('new-finding-modal').hidden = false;
+/* New finding modal wiring */
+safeOn('#new-finding-btn','click', ()=> {
+  const m = document.getElementById('new-finding-modal'); if(m) m.hidden = false;
 });
-document.getElementById('close-new-finding').addEventListener('click', ()=> document.getElementById('new-finding-modal').hidden = true);
-document.getElementById('submit-finding').addEventListener('click', ()=>{
+safeOn('#close-new-finding','click', ()=> { const m = document.getElementById('new-finding-modal'); if(m) m.hidden = true; });
+safeOn('#submit-finding','click', ()=>{
   const form = document.getElementById('new-finding-form');
-  const repoPath = form.repo.value.trim();
+  if(!form) return;
+  const repoPath = (form.repo || {}).value ? form.repo.value.trim() : '';
   const title = form.title.value.trim();
   const type = form.type.value;
   const desc = form.desc.value.trim();
   if(!repoPath || !title){ alert('Please provide a repository path and title'); return; }
-  // create or update repo: simple semantic - path becomes repo name
   let repo = App.repos.find(r=> r.name.toLowerCase() === repoPath.toLowerCase());
   if(!repo){
     repo = {
@@ -397,11 +417,10 @@ document.getElementById('submit-finding').addEventListener('click', ()=>{
     };
     App.repos.unshift(repo);
   }
-  // add commit
   const commit = { id: uid('c'), author: App.user ? App.user.displayName : 'guest', year: new Date().getFullYear(), type, message: title, layers:[{id:uid('L'), name:'new layer', thickness:10, color:'#c2a97f', notes: desc}] };
   repo.commits.push(commit);
   saveLS('archeo_repos', App.repos);
-  document.getElementById('new-finding-modal').hidden = true;
+  const m = document.getElementById('new-finding-modal'); if(m) m.hidden = true;
   toast('Finding submitted');
   render(); // re-render current page
 });
@@ -429,8 +448,6 @@ function repoCardHTML(repo){
   `;
 }
 
-function escapeHTML(s){ if(!s && s!==0) return ''; return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
-
 /* ----------------------------------------------------------------------------
    Renderers for specific pages
    ---------------------------------------------------------------------------- */
@@ -438,14 +455,19 @@ function escapeHTML(s){ if(!s && s!==0) return ''; return String(s).replaceAll('
 function render(){
   updateHeaderAuth();
   const root = document.getElementById('app-root');
+  if(!root) return;
   root.innerHTML = ''; // clear
+
   // global search send to explore
-  document.getElementById('global-search').onkeypress = (e)=>{
-    if(e.key === 'Enter'){
-      App.filter.search = e.target.value.trim();
-      navigate('explore');
-    }
-  };
+  const globalSearch = document.getElementById('global-search');
+  if(globalSearch){
+    globalSearch.onkeypress = (e)=>{
+      if(e.key === 'Enter'){
+        App.filter.search = e.target.value.trim();
+        navigate('explore');
+      }
+    };
+  }
 
   if(App.page === 'explore') return renderExplore(root);
   if(App.page === 'map') return renderMap(root);
@@ -517,7 +539,6 @@ function renderExplore(root){
   function filterRepos(){
     const [from,to] = App.filter.yearRange;
     let repos = App.repos.filter(r => {
-      // time filter: any commit within range
       const timeOk = r.commits.some(c => c.year >= from && c.year <= to);
       if(!timeOk) return false;
       if(App.filter.type && !r.commits.some(c => c.type === App.filter.type)) return false;
@@ -527,7 +548,6 @@ function renderExplore(root){
       }
       return true;
     });
-    // sort by stars desc
     repos.sort((a,b)=> b.stars - a.stars);
     return repos;
   }
@@ -553,39 +573,47 @@ function renderExplore(root){
     });
   }
 
-  // timeline init
+  // timeline init (guarded)
   const timelineEl = document.getElementById('timeline');
   timelineEl.innerHTML = '<div id="time-slider"></div>';
-  if(!timelineEl._init){
-    noUiSlider.create(document.getElementById('time-slider'), {
-      start: App.filter.yearRange,
-      connect: true,
-      range: { min: -3000, max: 2020 },
-      step: 10,
-      tooltips: [true, true],
-      format: { to: v => Math.round(v), from: v => Number(v) }
-    });
-    document.getElementById('time-slider').noUiSlider.on('update', (v)=>{
-      App.filter.yearRange = [Number(v[0]), Number(v[1])];
-      // do not re-render too aggressively; we just update list
-      renderList();
-    });
-    timelineEl._init = true;
+  const timeSliderElement = document.getElementById('time-slider');
+  if (typeof noUiSlider !== 'undefined' && timeSliderElement) {
+    if(!timeSliderElement._init){
+      noUiSlider.create(timeSliderElement, {
+        start: App.filter.yearRange,
+        connect: true,
+        range: { min: -3000, max: 2020 },
+        step: 10,
+        tooltips: [true, true],
+        format: { to: v => Math.round(v), from: v => Number(v) }
+      });
+      timeSliderElement.noUiSlider.on('update', (v)=>{
+        App.filter.yearRange = [Number(v[0]), Number(v[1])];
+        renderList();
+      });
+      timeSliderElement._init = true;
+    } else {
+      timeSliderElement.noUiSlider.set(App.filter.yearRange);
+    }
   } else {
-    document.getElementById('time-slider').noUiSlider.set(App.filter.yearRange);
+    // fallback: show static range input if noUiSlider not available
+    console.warn('noUiSlider not available — timeline disabled');
+    timelineEl.insertAdjacentHTML('beforeend', '<div class="muted small">Timeline requires noUiSlider (disabled).</div>');
   }
 
   // filters panel wiring
-  document.getElementById('explore-filter-type').value = App.filter.type;
-  document.getElementById('explore-search').value = App.filter.search;
-  document.getElementById('apply-filters').onclick = ()=>{
-    App.filter.type = document.getElementById('explore-filter-type').value;
-    App.filter.search = document.getElementById('explore-search').value.trim();
+  const typeSelect = document.getElementById('explore-filter-type');
+  const searchInput = document.getElementById('explore-search');
+  if(typeSelect) typeSelect.value = App.filter.type;
+  if(searchInput) searchInput.value = App.filter.search;
+  safeOn('#apply-filters','click', ()=>{
+    App.filter.type = typeSelect ? typeSelect.value : '';
+    App.filter.search = searchInput ? searchInput.value.trim() : '';
     renderList();
-  };
+  });
 
-  document.getElementById('open-map').addEventListener('click', ()=> navigate('map'));
-  document.getElementById('open-issues').addEventListener('click', ()=> navigate('issues'));
+  safeOn('#open-map','click', ()=> navigate('map'));
+  safeOn('#open-issues','click', ()=> navigate('issues'));
 
   renderList();
 }
@@ -604,13 +632,24 @@ function renderMap(root){
     </div>
   `;
 
-  // initialize map (Leaflet)
   const mapEl = document.getElementById('map');
+  if(!mapEl){
+    console.warn('Map element not found');
+    return;
+  }
+  // guard Leaflet
+  if(typeof L === 'undefined'){
+    mapEl.innerHTML = '<div class="muted small">Leaflet not loaded — map unavailable.</div>';
+    console.warn('Leaflet (L) is not available');
+    return;
+  }
+
   mapEl.innerHTML = ''; // clear
   const map = L.map(mapEl).setView([20, 0], 2);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
 
   App.repos.forEach(repo=>{
+    if(typeof repo.lat !== 'number' || typeof repo.lon !== 'number') return;
     if(repo.lat === 0 && repo.lon === 0) return; // skip unknown coords
     const marker = L.circleMarker([repo.lat, repo.lon], { radius:6, color:'#071625', fillColor:'#58a6ff', fillOpacity:0.95 }).addTo(map);
     marker.on('click', ()=> navigate('repo', { repoId: repo.id }));
@@ -670,7 +709,7 @@ function renderRepo(root, repoId){
     </div>
   `;
 
-  // tab wiring
+  // tab wiring - safe attach
   const tabs = document.querySelectorAll('.tab');
   tabs.forEach(t=> t.addEventListener('click', (e)=>{
     tabs.forEach(x=> x.classList.remove('selected'));
@@ -683,29 +722,29 @@ function renderRepo(root, repoId){
 
   // recent commits list
   const rc = document.getElementById('recent-commits');
-  rc.innerHTML = repo.commits.slice().reverse().map(c=>`<div style="padding:8px; border-bottom:1px solid #30363d;"><div style="font-weight:700">${escapeHTML(c.message)}</div><div class="muted small">${escapeHTML(c.author)} • ${escapeHTML(c.year)} • ${escapeHTML(c.type)}</div></div>`).join('');
+  if(rc) rc.innerHTML = repo.commits.slice().reverse().map(c=>`<div style="padding:8px; border-bottom:1px solid #30363d;"><div style="font-weight:700">${escapeHTML(c.message)}</div><div class="muted small">${escapeHTML(c.author)} • ${escapeHTML(c.year)} • ${escapeHTML(c.type)}</div></div>`).join('');
 
-  document.getElementById('star-btn').addEventListener('click', ()=>{
+  safeOn('#star-btn','click', ()=>{
     repo.stars += 1;
     saveLS('archeo_repos', App.repos);
     toast('Starred ' + repo.name);
     render();
   });
-  document.getElementById('fork-btn').addEventListener('click', ()=>{
+  safeOn('#fork-btn','click', ()=>{
     const branch = { id: uid('branch'), name: `${App.user?App.user.displayName:'guest'}-fork-${repo.branches.length+1}`, commits: JSON.parse(JSON.stringify(repo.commits)) };
     repo.branches.push(branch);
     saveLS('archeo_repos', App.repos);
     toast('Fork created: ' + branch.name);
     renderRepo(document.getElementById('app-root'), repo.id);
   });
-  document.getElementById('open-3d').addEventListener('click', ()=> open3DViewer(repo, repo.commits[repo.commits.length-1]));
+  safeOn('#open-3d','click', ()=> open3DViewer(repo, repo.commits[repo.commits.length-1]));
 }
 
 /* load content for repo tabs */
 function loadRepoTab(tab, repo){
   const out = document.getElementById('repo-tab-content');
+  if(!out) return;
   if(tab === 'code'){
-    // list commits as code files (simulate)
     out.innerHTML = `
       <div><strong>Repository files</strong></div>
       <div class="mt-2 small muted">This is a simulated file tree: commits act as snapshots.</div>
@@ -713,7 +752,6 @@ function loadRepoTab(tab, repo){
         ${repo.commits.slice().reverse().map(c=>`<div style="padding:10px; border-bottom:1px solid #30363d;"><div style="font-weight:700">${escapeHTML(c.message)}</div><div class="muted small">${escapeHTML(c.author)} • ${escapeHTML(c.year)} • <button class="btn btn-sm btn-ghost btn-diff" data-commit="${c.id}">Diff</button> <button class="btn btn-sm btn-ghost btn-3d" data-commit="${c.id}">3D</button></div></div>`).join('')}
       </div>
     `;
-    // attach diff / 3D buttons
     out.querySelectorAll('.btn-diff').forEach(b=> b.addEventListener('click', (e)=>{
       const id = e.currentTarget.dataset.commit;
       openDiffChooser(repo, id);
@@ -724,7 +762,6 @@ function loadRepoTab(tab, repo){
       open3DViewer(repo, commit);
     }));
   } else if(tab === 'issues'){
-    // show issues for this repo
     const list = App.issues.filter(i=> i.repoId === repo.id);
     out.innerHTML = `
       <div class="d-flex justify-content-between align-items-center">
@@ -735,7 +772,7 @@ function loadRepoTab(tab, repo){
         ${list.map(i=> `<div style="padding:10px; border-bottom:1px solid #30363d;"><div style="font-weight:700">${escapeHTML(i.title)}</div><div class="muted small">${escapeHTML(i.author)} • ${escapeHTML(i.status)}</div></div>`).join('')}
       </div>
     `;
-    document.getElementById('new-issue').addEventListener('click', ()=> {
+    safeOn('#new-issue','click', ()=> {
       const title = prompt('Issue title');
       if(!title) return;
       const issue = { id: uid('iss'), title, repoId: repo.id, status:'todo', author: App.user?App.user.displayName:'guest', created: now(), comments:[] };
@@ -760,7 +797,7 @@ function loadRepoTab(tab, repo){
       mergePR(prId);
       loadRepoTab('prs', repo);
     }));
-    document.getElementById('new-pr').addEventListener('click', ()=>{
+    safeOn('#new-pr','click', ()=>{
       const title = prompt('Pull request title');
       if(!title) return;
       const pr = { id: uid('pr'), title, repoId: repo.id, author: App.user?App.user.displayName:'guest', created: now(), status:'open', description:'' };
@@ -770,35 +807,41 @@ function loadRepoTab(tab, repo){
       toast('PR created');
     });
   } else if(tab === 'timeline'){
-    // show commit timeline with slider
     out.innerHTML = `<div><strong>Commit timeline</strong></div><div id="repo-timeline" style="margin-top:12px;"></div><div id="repo-commit-list" class="mt-3"></div>`;
-    // timeline slider (min/max from commits)
     const years = repo.commits.map(c=>c.year);
     const minY = Math.min(...years), maxY = Math.max(...years);
     const container = document.getElementById('repo-timeline');
+    if(!container) return;
     container.innerHTML = `<div id="repo-time-slider"></div>`;
-    if(!container._init){
-      noUiSlider.create(document.getElementById('repo-time-slider'), {
-        start: [minY, maxY],
-        connect: true,
-        range: { min: minY, max: maxY },
-        step: 1,
-        tooltips: [true, true],
-        format: { to: v => Math.round(v), from: v => Number(v) }
+    const sliderEl = document.getElementById('repo-time-slider');
+    if (typeof noUiSlider !== 'undefined' && sliderEl) {
+      if(!sliderEl._init){
+        noUiSlider.create(sliderEl, {
+          start: [minY, maxY],
+          connect: true,
+          range: { min: minY, max: maxY },
+          step: 1,
+          tooltips: [true, true],
+          format: { to: v => Math.round(v), from: v => Number(v) }
+        });
+        sliderEl._init = true;
+      } else {
+        sliderEl.noUiSlider.updateOptions({ range: { min: minY, max: maxY }, start: [minY, maxY] });
+        sliderEl.noUiSlider.set([minY, maxY]);
+      }
+      sliderEl.noUiSlider.on('update', (v)=>{
+        const from = Number(v[0]), to = Number(v[1]);
+        const list = repo.commits.filter(c=> c.year >= from && c.year <= to ).slice().reverse();
+        const listEl = document.getElementById('repo-commit-list');
+        if(listEl) listEl.innerHTML = list.map(c=>`<div style="padding:8px; border-bottom:1px solid #30363d;"><div style="font-weight:700">${escapeHTML(c.message)}</div><div class="muted small">${escapeHTML(c.year)} • ${escapeHTML(c.type)}</div><div class="mt-1"><button class="btn btn-sm btn-ghost btn-diff" data-commit="${c.id}">Diff</button><button class="btn btn-sm btn-ghost btn-3d" data-commit="${c.id}">3D</button></div></div>`).join('');
+        // attach
+        document.querySelectorAll('#repo-commit-list .btn-diff').forEach(b=> b.addEventListener('click', (e)=> openDiffChooser(repo, e.currentTarget.dataset.commit)));
+        document.querySelectorAll('#repo-commit-list .btn-3d').forEach(b=> b.addEventListener('click', (e)=> { const c = repo.commits.find(x=> x.id === e.currentTarget.dataset.commit); open3DViewer(repo, c); }));
       });
-      container._init = true;
     } else {
-      document.getElementById('repo-time-slider').noUiSlider.updateOptions({ range: { min: minY, max: maxY }, start: [minY, maxY] });
-      document.getElementById('repo-time-slider').noUiSlider.set([minY, maxY]);
+      container.insertAdjacentHTML('beforeend', '<div class="muted small">Timeline requires noUiSlider (disabled).</div>');
+      console.warn('noUiSlider not available — repo timeline disabled');
     }
-    document.getElementById('repo-time-slider').noUiSlider.on('update', (v)=>{
-      const from = Number(v[0]), to = Number(v[1]);
-      const list = repo.commits.filter(c=> c.year >= from && c.year <= to ).slice().reverse();
-      document.getElementById('repo-commit-list').innerHTML = list.map(c=>`<div style="padding:8px; border-bottom:1px solid #30363d;"><div style="font-weight:700">${escapeHTML(c.message)}</div><div class="muted small">${escapeHTML(c.year)} • ${escapeHTML(c.type)}</div><div class="mt-1"><button class="btn btn-sm btn-ghost btn-diff" data-commit="${c.id}">Diff</button><button class="btn btn-sm btn-ghost btn-3d" data-commit="${c.id}">3D</button></div></div>`).join('');
-      // attach
-      document.querySelectorAll('#repo-commit-list .btn-diff').forEach(b=> b.addEventListener('click', (e)=> openDiffChooser(repo, e.currentTarget.dataset.commit)));
-      document.querySelectorAll('#repo-commit-list .btn-3d').forEach(b=> b.addEventListener('click', (e)=> { const c = repo.commits.find(x=> x.id === e.currentTarget.dataset.commit); open3DViewer(repo, c); }));
-    });
   }
 }
 
@@ -818,10 +861,10 @@ function renderIssuesBoard(root){
       </div>
     </div>
   `;
-  // render issues into columns
   function refresh(){
     cols.forEach(col=>{
       const el = document.getElementById('col-'+col);
+      if(!el) return;
       el.innerHTML = '';
       App.issues.filter(i=> i.status === col).forEach(i=>{
         const card = document.createElement('div');
@@ -832,18 +875,15 @@ function renderIssuesBoard(root){
         el.appendChild(card);
       });
     });
-    // attach move buttons
     document.querySelectorAll('.btn-move').forEach(b=> b.addEventListener('click', (e)=>{
       const id = e.currentTarget.dataset.id;
       const cur = e.currentTarget.dataset.col;
       const nextIndex = (cols.indexOf(cur) + 1) % cols.length;
       const issue = App.issues.find(i=> i.id === id);
-      issue.status = cols[nextIndex];
-      saveLS('archeo_issues', App.issues);
-      refresh();
+      if(issue){ issue.status = cols[nextIndex]; saveLS('archeo_issues', App.issues); refresh(); }
     }));
   }
-  document.getElementById('new-board-issue').addEventListener('click', ()=>{
+  safeOn('#new-board-issue','click', ()=>{
     const title = prompt('Issue title');
     if(!title) return;
     const repoId = prompt('Repository ID (optional)');
@@ -872,10 +912,11 @@ function renderPRList(root){
   `;
   function refresh(){
     const el = document.getElementById('pr-list');
+    if(!el) return;
     el.innerHTML = prs.map(p=>`<div class="Box-row"><div style="flex:1"><div style="font-weight:700">${escapeHTML(p.title)}</div><div class="muted small">${escapeHTML(p.author)} • ${escapeHTML(p.status)}</div></div><div><button class="btn btn-sm btn-ghost btn-merge" data-id="${p.id}">Merge</button></div></div>`).join('');
     el.querySelectorAll('.btn-merge').forEach(b=> b.addEventListener('click', (e)=> mergePR(e.currentTarget.dataset.id)));
   }
-  document.getElementById('new-pr-global').addEventListener('click', ()=>{
+  safeOn('#new-pr-global','click', ()=>{
     const title = prompt('PR title');
     const repoId = prompt('Repo ID for PR', App.repos[0].id);
     if(!title || !repoId) return;
@@ -895,7 +936,6 @@ function mergePR(prId){
   const pr = App.prs.find(p=> p.id === prId);
   if(!pr) return;
   if(!confirm(`Merge PR "${pr.title}"?`)) return;
-  // simulate merge: find repo and append a merge commit
   const repo = App.repos.find(r => r.id === pr.repoId);
   if(repo){
     const commit = { id: uid('merge'), author: pr.author, year: new Date().getFullYear(), type: 'Maintenance', message: `Merge PR: ${pr.title}`, layers: repo.commits[repo.commits.length-1].layers || [] };
@@ -912,7 +952,6 @@ function mergePR(prId){
    Diff viewer: compare commits' layers
    ------------------------- */
 function openDiffChooser(repo, commitId){
-  // choose commit to compare
   const html = `<div class="card-dark" style="width:600px; max-width:95%; padding:12px;">
     <h4>Select base & compare commits</h4>
     <div style="display:flex; gap:8px; margin-top:8px;">
@@ -960,13 +999,20 @@ function showDiffResults(repo, base, other){
 }
 
 /* -------------------------
-   3D viewer (Three.js)
+   3D viewer (Three.js) - guarded
    ------------------------- */
 function open3DViewer(repo, commit){
   if(!commit){
     alert('No commit selected');
     return;
   }
+  // guard THREE
+  if(typeof THREE === 'undefined'){
+    alert('3D viewer requires Three.js (not loaded)');
+    console.warn('Three.js (THREE) not available');
+    return;
+  }
+
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
   overlay.style.alignItems = 'stretch';
@@ -978,7 +1024,7 @@ function open3DViewer(repo, commit){
 
   // Three.js scene
   const mount = document.getElementById('three-canvas');
-  const w = mount.clientWidth, h = mount.clientHeight;
+  const w = Math.max(640, mount.clientWidth), h = Math.max(320, mount.clientHeight);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x05060a);
   const camera = new THREE.PerspectiveCamera(45, w/h, 0.1, 2000);
@@ -1006,7 +1052,7 @@ function open3DViewer(repo, commit){
   });
   scene.add(group);
 
-  // simple orbit controls
+  // simple orbit controls (lightweight)
   let dragging=false, lx=0, ly=0;
   mount.addEventListener('pointerdown', (e)=> { dragging=true; lx=e.clientX; ly=e.clientY; mount.style.cursor='grabbing'; });
   window.addEventListener('pointerup', ()=> { dragging=false; mount.style.cursor='default'; });
@@ -1039,13 +1085,17 @@ function attachHeaderLinks(){
     });
   });
 }
-document.getElementById('open-explore').addEventListener('click', ()=> navigate('explore'));
-document.querySelector('.Header-link[data-route="map"]').addEventListener('click', (e)=> { e.preventDefault(); navigate('map'); });
-document.querySelector('.Header-link[data-route="issues"]').addEventListener('click', (e)=> { e.preventDefault(); navigate('issues'); });
-document.querySelector('.Header-link[data-route="prs"]').addEventListener('click', (e)=> { e.preventDefault(); navigate('prs'); });
-document.querySelector('.Header-link[data-route="explore"]').addEventListener('click', (e)=> { e.preventDefault(); navigate('explore'); });
 
-document.getElementById('open-map')?.addEventListener('click', ()=> navigate('map'));
+/* safe initial wiring */
+safeOn('#open-explore','click', ()=> navigate('explore'));
+const mapLink = document.querySelector('.Header-link[data-route="map"]');
+if(mapLink) mapLink.addEventListener('click', (e)=> { e.preventDefault(); navigate('map'); });
+const issuesLink = document.querySelector('.Header-link[data-route="issues"]');
+if(issuesLink) issuesLink.addEventListener('click', (e)=> { e.preventDefault(); navigate('issues'); });
+const prsLink = document.querySelector('.Header-link[data-route="prs"]');
+if(prsLink) prsLink.addEventListener('click', (e)=> { e.preventDefault(); navigate('prs'); });
+const exploreLink = document.querySelector('.Header-link[data-route="explore"]');
+if(exploreLink) exploreLink.addEventListener('click', (e)=> { e.preventDefault(); navigate('explore'); });
 
 /* initial header auth UI */
 updateHeaderAuth();
@@ -1071,7 +1121,8 @@ document.querySelectorAll('[data-route="profile"]').forEach(a=>{
 function renderProfile(root){
   const user = App.user;
   if(!user){
-    document.getElementById('auth-modal').hidden = false;
+    const auth = document.getElementById('auth-modal');
+    if(auth) auth.hidden = false;
     return;
   }
   root.innerHTML = `
@@ -1090,11 +1141,6 @@ function renderProfile(root){
     </div>
   `;
 }
-
-/* escape for basic text content */
-function escapeHTML(s){ if(s===null||s===undefined) return ''; return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
-
 </script>
 </body>
 </html>
-
